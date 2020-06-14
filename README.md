@@ -55,15 +55,11 @@ python3  main.py [--config='./parser.ini']
 
 ## Running the tests
 
-Explain how to run the automated tests for this system
-
-### Break down into end to end tests
-
-Explain what these tests test and why
+To run tests execute in the project directory
 
 ```
-Give an example
-```
+python3  -m unittest 
+```  
 
 
 
