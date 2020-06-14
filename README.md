@@ -4,9 +4,9 @@
 
 Parse and analyze Ngnix log. Find the slowest http queries.
 
-### Prerequisites
+### Requirements
 
-You have installed python 3.0 or later
+You need Python 3.0 or later
 
 ### Using
 
@@ -26,8 +26,8 @@ optional arguments:
 ```
 
 Config file format:
-
-```      
+ 
+```    
 [main]
 report_size = 1000
 report_dir = "./reports"
@@ -36,10 +36,21 @@ monitor_log_file = "./log_parser.log"
 
 ```
 
-report_size is optional. It defines how many URLs will be in the result report. Default value is 1000. <br>
-report_dir is optional. Directory where result reports are put. Default value is "./reports". <br>
-log_dir is optional. Directory where ngnix logs are. Default value is "./log". <br>
-monitor_log_name is optional. Monitor log path. By default log is written in stdout. <br>
+`report_size` is optional. It defines how many URLs will be in the result report. Default value is 1000. <br>
+`report_dir` is optional. Directory where result reports are put. Default value is "./reports". <br>
+`log_dir` is optional. Directory where ngnix logs are. Default value is "./log". <br>
+`monitor_log_name` is optional. Monitor log path. By default log is written in stdout. <br>
+
+
+To be able to see report file correctly you should download `jquery.tablesorter.min.js`.
+
+Run script:
+
+```
+python3  main.py [--config='./parser.ini']  
+```  
+
+`--config` is optional
 
 
 ## Running the tests

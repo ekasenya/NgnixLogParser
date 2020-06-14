@@ -40,8 +40,9 @@ class LogParser:
     total_line_cnt = 0
     error_lines_perc = 0
 
-    def __init__(self, log_format):
+    def __init__(self, log_format, max_line_to_parse=0):
         self.log_format = log_format
+        self.max_line_to_parse = max_line_to_parse
 
     def get_pattern(self):
         if (self.pattern is None):
@@ -93,10 +94,10 @@ class LogParser:
 
         cnt = 0
         is_gz = self.file_path.endswith(".gz")
-        with gzip.open(self.file_path, mode='r') if is_gz else open(self.file_path, encoding="UTF-8", mode='r')  as f:
+        with gzip.open(self.file_path, mode='rb') if is_gz else open(self.file_path, encoding="UTF-8", mode='r')  as f:
             while True:
                 cnt += 1
-                if cnt > 20000:
+                if (self.max_line_to_parse > 0) & (cnt > self.max_line_to_parse):
                     break
 
                 line = f.readline().decode('UTF-8') if is_gz else f.readline()
@@ -128,18 +129,11 @@ class LogParser:
         self.result_table.sort(key=lambda item: item[TIME_SUM], reverse=True)
         total_count = sum(map(lambda item: item[COUNT], self.result_table))
         total_time = sum(map(lambda item: item[TIME_SUM], self.result_table))
-        print('total_count = {}'.format(total_count))
-        print('total_time = {}'.format(total_time))
 
         self.result_table = self.result_table[:1000]
 
         total_count = sum(map(lambda item: item[COUNT], self.result_table))
         total_time = sum(map(lambda item: item[TIME_SUM], self.result_table))
-
-        print(self.result_table)
-
-        print('total_count = {}'.format(total_count))
-        print('total_time = {}'.format(total_time))
 
         for item in self.result_table:
             item[TIME_AVG] = round(item[TIME_MAX] / len(self.result_table), 3)

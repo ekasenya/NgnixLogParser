@@ -138,7 +138,7 @@ def main():
             logging.info("Report {} already exists".format(result_file_name))
             sys.exit()
 
-        log_parser = LogParser(LOG_FORMAT)
+        log_parser = LogParser(LOG_FORMAT, 10000)
         log_parser.parse(config["LOG_DIR"] + file_info.file_path)
 
         if (log_parser.get_error_line_perc() > MAX_ERROR_PERC):
