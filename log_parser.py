@@ -40,8 +40,9 @@ class LogParser:
     total_line_cnt = 0
     error_lines_perc = 0
 
-    def __init__(self, log_format, max_line_to_parse=0):
+    def __init__(self, log_format, report_size, max_line_to_parse=0):
         self.log_format = log_format
+        self.report_size = report_size
         self.max_line_to_parse = max_line_to_parse
 
     def get_pattern(self):
@@ -130,7 +131,7 @@ class LogParser:
         total_count = sum(map(lambda item: item[COUNT], self.result_table))
         total_time = sum(map(lambda item: item[TIME_SUM], self.result_table))
 
-        self.result_table = self.result_table[:1000]
+        self.result_table = self.result_table[:self.report_size]
 
         total_count = sum(map(lambda item: item[COUNT], self.result_table))
         total_time = sum(map(lambda item: item[TIME_SUM], self.result_table))
