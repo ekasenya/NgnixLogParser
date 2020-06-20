@@ -34,7 +34,7 @@ def gen_lines(num_lines):
     for i in range(num_lines):
         ip = ".".join([str(random.randint(1, 256)) for _ in range(4)])
 
-        if (i % 10 == 0):
+        if i % 10 == 0:
             url = '/index.html'
         else:
             url = '/banner/{}'.format(uuid.uuid4().hex)

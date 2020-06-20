@@ -30,9 +30,9 @@ Config file format:
 ```    
 [main]
 report_size = 1000
-report_dir = "./reports"
-log_dir = "./log"
-monitor_log_file = "./log_parser.log"
+report_dir = ./reports
+log_dir = ./log
+monitor_log_file = ./log_parser.log
 
 ```
 

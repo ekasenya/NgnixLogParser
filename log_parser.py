@@ -53,12 +53,11 @@ def parse(log_format, report_size, file_path, max_line_to_parse):
 
     error_lines_cnt = 0
     total_line_cnt = 0
-    error_lines_perc = 0
 
     result_table = []
     url_times = {}
     pattern = get_pattern(log_format)
-    group_name_by_index = dict([(v, k) for k, v in p.groupindex.items()])
+    group_name_by_index = dict([(v, k) for k, v in pattern.groupindex.items()])
 
     logging.info('Start parsing file {}'.format(file_path))
     for tup in parse_line(pattern, group_name_by_index, file_path, max_line_to_parse):
