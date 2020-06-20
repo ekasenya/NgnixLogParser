@@ -1,22 +1,22 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import configparser
+import datetime
+import logging
+import os
+import re
+import sys
+from argparse import ArgumentParser
+from collections import namedtuple
+from string import Template
+
+from log_parser import parse
 
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
 #                     '"$http_user_agent" "$http_x_forwarded_for" "$http_X_REQUEST_ID" "$http_X_RB_USER" '
 #                     '$request_time';
-
-from log_parser import LogParser
-from string import Template
-from collections import namedtuple
-import os
-import sys
-import logging
-import configparser
-from argparse import ArgumentParser
-import datetime
-import re
 
 
 DEFAULT_CONFIG_PATH = './parser_conf.ini'
@@ -45,7 +45,7 @@ def get_config_file_name():
 def load_config(config):
     try:
         conf_parser = configparser.ConfigParser()
-        conf_parser.read(DEFAULT_CONFIG_PATH, encoding='UTF-8')
+        conf_parser.read(get_config_file_name, encoding='UTF-8')
 
         if conf_parser.has_option(CONFIG_SECTION_NAME, 'report_size'):
             config['REPORT_SIZE'] = conf_parser.get(CONFIG_SECTION_NAME, 'report_size')
@@ -93,7 +93,7 @@ def find_last_log(log_dir):
             date_str = next(re.finditer(r'[1-2]\d{3}[0-1]\d[0-3]\d', file_name)).group(0)
             dt = datetime.datetime.strptime(date_str, '%Y%m%d').date()
 
-            if (dt > last_date):
+            if dt > last_date:
                 last_date = dt
                 last_file_name = file_name
     return FileInfo(file_path=last_file_name, file_date=last_date)
@@ -126,7 +126,7 @@ def main():
         config_logging(config["MONITOR_LOG_FILE"])
 
         file_info = find_last_log(config["LOG_DIR"])
-        if (file_info.file_path == ''):
+        if file_info.file_path == '':
             logging.info('There are not log files to process')
             sys.exit()
 
@@ -138,14 +138,13 @@ def main():
             logging.info("Report {} already exists".format(result_file_name))
             sys.exit()
 
-        log_parser = LogParser(LOG_FORMAT, config["REPORT_SIZE"])
-        log_parser.parse(config["LOG_DIR"] + file_info.file_path)
+        parse_result = parse(LOG_FORMAT, config["REPORT_SIZE"], config["LOG_DIR"] + file_info.file_path, 10000)
 
-        if (log_parser.get_error_line_perc() > MAX_ERROR_PERC):
-            logging.error('Could not parse {}% of lines'.format(log_parser.error_lines_perc))
+        if parse_result.error_lines_perc > MAX_ERROR_PERC:
+            logging.error('Could not parse {}% of lines'.format(parse_result.error_lines_perc))
             sys.exit()
 
-        save_result(log_parser.get_result_table(), config["REPORT_DIR"] + result_file_name)
+        save_result(parse_result.result_table, config["REPORT_DIR"] + result_file_name)
     except Exception as e:
         logging.exception('Parsing was stopped. Error: {}'.format(e))
 

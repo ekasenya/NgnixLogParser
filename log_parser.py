@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 
-from statistics import median
-import re
-import logging
 import gzip
+import logging
+import re
+from collections import namedtuple
+from statistics import median
 
 URL = 'url'
 COUNT = 'count'
@@ -30,125 +31,108 @@ pattern_dict = {
     '$request_time': r'(?P<request_time>\d+.\d+)'
 }
 
+ParseLineResult = namedtuple('ParseLineResult', 'url time success')
+ParseResult = namedtuple('ParseResult', 'result_table error_lines_perc')
 
-class LogParser:
-    result_table = []
-    url_times = {}
-    pattern = None
+
+def get_pattern(log_format):
+    pattern_str = log_format
+
+    pattern_str = pattern_str.replace('[', '\[')
+    pattern_str = pattern_str.replace(']', '\]')
+    pattern_str = pattern_str.replace('"', '\"')
+
+    pattern_str = re.sub('|'.join(r'{}\b'.format(re.escape(s)) for s in pattern_dict),
+                         lambda match: pattern_dict[match.group(0)], pattern_str)
+
+    return re.compile(pattern_str)
+
+
+def parse(log_format, report_size, file_path, max_line_to_parse):
+    file_path = file_path
 
     error_lines_cnt = 0
     total_line_cnt = 0
     error_lines_perc = 0
 
-    def __init__(self, log_format, report_size, max_line_to_parse=0):
-        self.log_format = log_format
-        self.report_size = report_size
-        self.max_line_to_parse = max_line_to_parse
+    result_table = []
+    url_times = {}
+    pattern = get_pattern(log_format)
+    group_name_by_index = dict([(v, k) for k, v in p.groupindex.items()])
 
-    def get_pattern(self):
-        if (self.pattern is None):
-            pattern_str = self.log_format
+    logging.info('Start parsing file {}'.format(file_path))
+    for tup in parse_line(pattern, group_name_by_index, file_path, max_line_to_parse):
+        if not tup.success:
+            error_lines_cnt += 1
+        total_line_cnt += 1
 
-            pattern_str = pattern_str.replace('[', '\[')
-            pattern_str = pattern_str.replace(']', '\]')
-            pattern_str = pattern_str.replace('"', '\"')
+        if tup.url == '':
+            continue
 
-            pattern_str = re.sub('|'.join(r'{}\b'.format(re.escape(s)) for s in pattern_dict),
-                                 lambda match: pattern_dict[match.group(0)], pattern_str)
-            self.pattern = re.compile(pattern_str)
-        return self.pattern
+        item = next((elem for elem in result_table if elem[URL] == tup.url), None)
 
-    def parse(self, file_path):
-        self.file_path = file_path
-        self.error_lines_cnt = 0
-        self.total_line_cnt = 0
-        self.error_lines_perc = 0
+        if item is None:
+            result_table.append({URL: tup.url, COUNT: 1, TIME_SUM: tup.time, TIME_MAX: tup.time})
+        else:
+            item[COUNT] += 1
+            item[TIME_SUM] += tup.time
+            if item[TIME_MAX] < tup.time:
+                item[TIME_MAX] = tup.time
 
-        logging.info('Start parsing file {}'.format(file_path))
+        if tup.url in url_times:
+            url_times[tup.url].append(tup.time)
+        else:
+            url_times[tup.url] = [tup.time]
 
-        for tup in self.parse_line():
-            if (tup[0] == ''):
-                continue
+    prepare_data(result_table, report_size, url_times)
 
-            url = tup[0]
-            time = tup[1]
-            item = next((elem for elem in self.result_table if elem[URL] == url), None)
+    logging.info('Lines processed: {}. Lines parsed: {}. Line not parsed: {}'.format(
+        total_line_cnt, total_line_cnt - error_lines_cnt, error_lines_cnt))
 
-            if (item is None):
-                self.result_table.append({URL: url, COUNT: 1, TIME_SUM: time, TIME_MAX: time})
-            else:
-                item[COUNT] += 1
-                item[TIME_SUM] += time
-                if (item[TIME_MAX] < time):
-                    item[TIME_MAX] = time
+    return ParseResult(result_table,  round(error_lines_cnt / total_line_cnt * 100, 2))
 
-            if (url in self.url_times):
-                self.url_times[url].append(time)
-            else:
-                self.url_times[url] = [time]
 
-        self.prepare_data()
+def parse_line(pattern, group_name_by_index, file_path, max_line_to_parse):
+    cnt = 0
+    is_gz = file_path.endswith(".gz")
+    with gzip.open(file_path, mode='rb') if is_gz else open(file_path, encoding="UTF-8", mode='r') as f:
+        while True:
+            cnt += 1
+            if (max_line_to_parse > 0) & (cnt > max_line_to_parse):
+                break
 
-    def parse_line(self):
-        p = self.get_pattern()
-        group_name_by_index = dict([(v, k) for k, v in p.groupindex.items()])
+            line = f.readline().decode('UTF-8') if is_gz else f.readline()
+            if not line:
+                break
 
-        cnt = 0
-        is_gz = self.file_path.endswith(".gz")
-        with gzip.open(self.file_path, mode='rb') if is_gz else open(self.file_path, encoding="UTF-8", mode='r')  as f:
-            while True:
-                cnt += 1
-                if (self.max_line_to_parse > 0) & (cnt > self.max_line_to_parse):
-                    break
+            match_count = 0
 
-                line = f.readline().decode('UTF-8') if is_gz else f.readline()
-                if not line:
-                    break
+            url = ''
+            time = 0
 
-                match_count = 0
+            result = pattern.finditer(line)
+            for match in result:
+                match_count += 1
+                for group_index, value in enumerate(match.groups()):
+                    if (value is not None) & ((group_index + 1) in group_name_by_index):
+                        if group_name_by_index[group_index + 1] == 'request':
+                            url = re.split(r' ', value)[1]
+                        elif group_name_by_index[group_index + 1] == 'request_time':
+                            time = round(float(value), 3)
 
-                url = ''
-                time = 0
+            yield ParseLineResult(url, time, match_count != 0)
 
-                result = p.finditer(line)
-                for match in result:
-                    match_count += 1
-                    for group_index, value in enumerate(match.groups()):
-                        if ((value is not None) & ((group_index + 1) in group_name_by_index)):
-                            if (group_name_by_index[group_index + 1] == 'request'):
-                                url = re.split(r' ', value)[1]
-                            elif (group_name_by_index[group_index + 1] == 'request_time'):
-                                time = round(float(value), 3)
 
-                if (match_count == 0):
-                    self.error_lines_cnt += 1
-                self.total_line_cnt += 1
+def prepare_data(result_table, report_size, url_times):
+    result_table.sort(key=lambda item: item[TIME_SUM], reverse=True)
+    result_table = result_table[:report_size]
 
-                yield (url, time)
+    total_count = sum(map(lambda item: item[COUNT], result_table))
+    total_time = sum(map(lambda item: item[TIME_SUM], result_table))
 
-    def prepare_data(self):
-        self.result_table.sort(key=lambda item: item[TIME_SUM], reverse=True)
-        total_count = sum(map(lambda item: item[COUNT], self.result_table))
-        total_time = sum(map(lambda item: item[TIME_SUM], self.result_table))
-
-        self.result_table = self.result_table[:self.report_size]
-
-        total_count = sum(map(lambda item: item[COUNT], self.result_table))
-        total_time = sum(map(lambda item: item[TIME_SUM], self.result_table))
-
-        for item in self.result_table:
-            item[TIME_AVG] = round(item[TIME_MAX] / len(self.result_table), 3)
-            item[TIME_MEDIAN] = round(median(self.url_times[item[URL]]), 3) if item[URL] in self.url_times else 0
-            item[TIME_PERC] = round(item[TIME_SUM] / total_time, 3)
-            item[COUNT_PERC] = round(item[COUNT] / total_count * 100, 3)
-            item[TIME_SUM] = round(item[TIME_SUM], 3)
-
-        self.error_lines_perc = round(self.error_lines_cnt / self.total_line_cnt * 100, 2)
-
-        logging.info('Lines processed: {}. Lines parsed: {}. Line not parsed: {}'.format(self.total_line_cnt, self.total_line_cnt - self.error_lines_cnt, self.error_lines_cnt))
-
-    def get_result_table(self):
-        return self.result_table
-
-    def get_error_line_perc(self):
-        return self.error_lines_perc
+    for item in result_table:
+        item[TIME_AVG] = round(item[TIME_MAX] / len(result_table), 3)
+        item[TIME_MEDIAN] = round(median(url_times[item[URL]]), 3) if item[URL] in url_times else 0
+        item[TIME_PERC] = round(item[TIME_SUM] / total_time, 3)
+        item[COUNT_PERC] = round(item[COUNT] / total_count * 100, 3)
+        item[TIME_SUM] = round(item[TIME_SUM], 3)

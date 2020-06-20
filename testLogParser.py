@@ -1,11 +1,11 @@
-import unittest
-
-import log_parser
-import main
 import datetime
 import os
 import random
+import unittest
 import uuid
+
+import log_parser
+import main
 
 
 class ConfigTests(unittest.TestCase):
