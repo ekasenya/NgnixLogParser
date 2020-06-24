@@ -105,7 +105,7 @@ def save_result(result_table, file_name):
 
 
 def main(config):
-    parse_result = parse(LOG_FORMAT, int(config["REPORT_SIZE"]), config["LOG_DIR"] + file_info.file_path, 10000)
+    parse_result = parse(LOG_FORMAT, int(config["REPORT_SIZE"]), config["LOG_DIR"] + file_info.file_path)
 
     if parse_result.error_lines_perc > MAX_ERROR_PERC:
         logging.error('Could not parse {}% of lines'.format(parse_result.error_lines_perc))
