@@ -14,6 +14,7 @@ TIME_AVG = 'time_avg'
 TIME_PERC = 'time_perc'
 TIME_MAX = 'time_max'
 TIME_MEDIAN = 'time_med'
+TIME_LIST = 'time_list'
 
 pattern_dict = {
     '$remote_addr': r'(?P<remote_addr>\d+.\d+.\d+.\d+)',
@@ -32,7 +33,6 @@ pattern_dict = {
 }
 
 ParseLineResult = namedtuple('ParseLineResult', 'url time success')
-ParseResult = namedtuple('ParseResult', 'result_table error_lines_perc')
 
 
 def get_pattern(log_format):
@@ -48,90 +48,95 @@ def get_pattern(log_format):
     return re.compile(pattern_str)
 
 
-def parse(log_format, report_size, file_path, max_line_to_parse):
-    file_path = file_path
-
+def calc_report_data(log_format, report_size, file_path, max_error_perc, max_line_to_parse=0):
     error_lines_cnt = 0
     total_line_cnt = 0
 
-    result_table = []
-    url_times = {}
+    raw_result_dict = {}
     pattern = get_pattern(log_format)
-    group_name_by_index = dict([(v, k) for k, v in pattern.groupindex.items()])
 
     logging.info('Start parsing file {}'.format(file_path))
-    for tup in parse_line(pattern, group_name_by_index, file_path, max_line_to_parse):
-        if not tup.success:
+    for line_data in get_line_data(pattern, file_path):
+        if not line_data.success:
             error_lines_cnt += 1
         total_line_cnt += 1
+        if (max_line_to_parse > 0) and (total_line_cnt >= max_line_to_parse):
+            break
 
-        if tup.url == '':
+        if line_data.url == '':
             continue
 
-        item = next((elem for elem in result_table if elem[URL] == tup.url), None)
-
-        if item is None:
-            result_table.append({URL: tup.url, COUNT: 1, TIME_SUM: tup.time, TIME_MAX: tup.time})
-        else:
-            item[COUNT] += 1
-            item[TIME_SUM] += tup.time
-            if item[TIME_MAX] < tup.time:
-                item[TIME_MAX] = tup.time
-
-        if tup.url in url_times:
-            url_times[tup.url].append(tup.time)
-        else:
-            url_times[tup.url] = [tup.time]
-
-    prepare_data(result_table, report_size, url_times)
+        add_line_data_to_dict(line_data, raw_result_dict)
 
     logging.info('Lines processed: {}. Lines parsed: {}. Line not parsed: {}'.format(
         total_line_cnt, total_line_cnt - error_lines_cnt, error_lines_cnt))
 
-    return ParseResult(result_table,  round(error_lines_cnt / total_line_cnt * 100, 2))
+    error_lines_perc = round(error_lines_cnt / total_line_cnt * 100, 2)
+    if error_lines_perc > max_error_perc:
+        logging.error('Could not parse {}% of lines'.format(error_lines_perc))
+        return []
+
+    return prepare_data(raw_result_dict, report_size)
 
 
-def parse_line(pattern, group_name_by_index, file_path, max_line_to_parse):
-    cnt = 0
-    is_gz = file_path.endswith(".gz")
-    with gzip.open(file_path, mode='rb') if is_gz else open(file_path, encoding="UTF-8", mode='r') as f:
+def add_line_data_to_dict(line_data, result_dict):
+    if line_data.url in result_dict:
+        item = result_dict[line_data.url]
+        item[COUNT] += 1
+        item[TIME_SUM] += line_data.time
+        if item[TIME_MAX] < line_data.time:
+            item[TIME_MAX] = line_data.time
+        item[TIME_LIST].append(line_data.time)
+    else:
+        result_dict[line_data.url] = {COUNT: 1, TIME_SUM: line_data.time, TIME_MAX: line_data.time,
+                                      TIME_LIST: [line_data.time]}
+
+
+def get_line_data(pattern, file_path):
+    open_file_func = gzip.open if file_path.endswith(".gz") else open
+    with open_file_func(file_path, mode='rb') as f:
         while True:
-            cnt += 1
-            if (max_line_to_parse > 0) & (cnt > max_line_to_parse):
-                break
-
-            line = f.readline().decode('UTF-8') if is_gz else f.readline()
+            line = f.readline().decode('UTF-8')
             if not line:
                 break
 
-            match_count = 0
-
-            url = ''
-            time = 0
-
-            result = pattern.finditer(line)
-            for match in result:
-                match_count += 1
-                for group_index, value in enumerate(match.groups()):
-                    if (value is not None) & ((group_index + 1) in group_name_by_index):
-                        if group_name_by_index[group_index + 1] == 'request':
-                            url = re.split(r' ', value)[1]
-                        elif group_name_by_index[group_index + 1] == 'request_time':
-                            time = round(float(value), 3)
-
-            yield ParseLineResult(url, time, match_count != 0)
+            yield parse_line(pattern, line)
 
 
-def prepare_data(result_table, report_size, url_times):
-    result_table.sort(key=lambda item: item[TIME_SUM], reverse=True)
-    result_table = result_table[:report_size]
+def parse_line(pattern, line):
+    url = ''
+    time = 0
 
-    total_count = sum(map(lambda item: item[COUNT], result_table))
-    total_time = sum(map(lambda item: item[TIME_SUM], result_table))
+    result = pattern.match(line)
 
-    for item in result_table:
-        item[TIME_AVG] = round(item[TIME_MAX] / len(result_table), 3)
-        item[TIME_MEDIAN] = round(median(url_times[item[URL]]), 3) if item[URL] in url_times else 0
+    if result:
+        url = result.groupdict()['request'].split()[1]
+        time = float(result.groupdict()['request_time'])
+
+    return ParseLineResult(url, time, result is not None)
+
+
+def prepare_data(result_dict, report_size):
+    result_list = list(map(lambda dict_item: dict_item[1].update({'url': dict_item[0]}) or dict_item[1],
+                           result_dict.items()))
+
+    result_list.sort(key=lambda list_item: list_item[TIME_SUM], reverse=True)
+    result_list = result_list[:report_size]
+
+    total_count = sum(map(lambda list_item: list_item[COUNT], result_list))
+    total_time = sum(map(lambda list_item: list_item[TIME_SUM], result_list))
+
+    for item in result_list:
+        item[TIME_AVG] = round(item[TIME_MAX] / len(result_list), 3)
+        item[TIME_MEDIAN] = round(median(item[TIME_LIST]), 3)
         item[TIME_PERC] = round(item[TIME_SUM] / total_time, 3)
         item[COUNT_PERC] = round(item[COUNT] / total_count * 100, 3)
         item[TIME_SUM] = round(item[TIME_SUM], 3)
+
+    result_list = list(map(remove_time_list_from_dict, result_list))
+    return result_list
+
+
+def remove_time_list_from_dict(dictionary):
+    del (dictionary[TIME_LIST])
+    return dictionary

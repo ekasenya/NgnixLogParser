@@ -33,6 +33,7 @@ report_size = 1000
 report_dir = ./reports
 log_dir = ./log
 monitor_log_file = ./log_parser.log
+max_error_perc = 20
 
 ```
 
@@ -40,6 +41,7 @@ monitor_log_file = ./log_parser.log
 `report_dir` is optional. Directory where result reports are put. Default value is "./reports". <br>
 `log_dir` is optional. Directory where ngnix logs are. Default value is "./log". <br>
 `monitor_log_name` is optional. Monitor log path. By default log is written in stdout. <br>
+`max_error_perc` is optional. Maximux permissible percent of lines parser couldn't process. If percent of not proccesed lines  is more report will not be created. Default value is 20
 
 
 To be able to see report file correctly you should download `jquery.tablesorter.min.js`.

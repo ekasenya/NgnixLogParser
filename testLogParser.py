@@ -1,22 +1,22 @@
-import datetime
+from datetime import datetime
 import os
 import random
 import unittest
 import uuid
 
-import log_parser
+from log_parser import calc_report_data
 import main
 
 
 class ConfigTests(unittest.TestCase):
     def test_read_config(self):
-        config = {}
-        main.load_config(config)
-        self.assertEqual(config["REPORT_SIZE"], 1000)
+        self.assertTrue(os.path.exists(main.DEFAULT_CONFIG_PATH))
+        config = main.load_config({}, main.DEFAULT_CONFIG_PATH)
+        self.assertEqual(int(config["report_size"]), 1000)
 
 
 class ReportFileExistsTest(unittest.TestCase):
-    report_file_path = "./report_{}.html".format(datetime.datetime.now().strftime('%Y%m%d'))
+    report_file_path = "./report_{}.html".format(datetime.now().strftime('%Y%m%d'))
 
     def setUp(self) -> None:
         with open(self.report_file_path, 'w+') as f:
@@ -41,29 +41,30 @@ def gen_lines(num_lines):
 
         b = random.randint(42, 10000)
         line = '{} -  - [{}] "GET {} HTTP/1.1" 200 {} "-" "-" "-" "-" "-" 0.{}\n'.format(
-            ip, datetime.datetime.now().strftime('%d/%b/%Y:%H:%M:%S +0300'), url, b, random.randint(100, 999))
+            ip, datetime.now().strftime('%d/%b/%Y:%H:%M:%S +0300'), url, b, random.randint(100, 999))
 
         yield line
 
 
 class LogParserTests(unittest.TestCase):
-    log_file_name = './log_test'
+    log_file_name = 'log_test'
 
     def setUp(self) -> None:
-        with open(self.log_file_name, 'w+') as f:
+        self.config = main.load_config({}, main.DEFAULT_CONFIG_PATH)
+        self.full_log_file_path = os.path.join(self.config["log_dir"], self.log_file_name)
+        with open(self.full_log_file_path, 'w+') as f:
             for line in gen_lines(100):
                 f.write(line)
 
     def test_parse_log(self):
-        config = {}
-        main.load_config(config)
-        parser = log_parser.LogParser(main.LOG_FORMAT, 10000)
-        parser.parse(self.log_file_name)
-        result_table = parser.get_result_table()
-        self.assertEqual(len(result_table), 91)
+
+        result_list = calc_report_data(main.LOG_FORMAT, int(self.config["report_size"]),
+                                       self.full_log_file_path,
+                                       int(self.config["max_error_perc"]))
+        self.assertEqual(len(result_list), 91)
 
     def tearDown(self) -> None:
-        os.remove(self.log_file_name)
+        os.remove(self.full_log_file_path)
 
 
 if __name__ == '__main__':
