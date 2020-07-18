@@ -48,7 +48,7 @@ def get_pattern(log_format):
     return re.compile(pattern_str)
 
 
-def calc_report_data(log_format, report_size, file_path, max_error_perc, max_line_to_parse=0):
+def calc_report_data(log_format, file_path, max_error_perc, max_line_to_parse=0):
     error_lines_cnt = 0
     total_line_cnt = 0
 
@@ -60,10 +60,10 @@ def calc_report_data(log_format, report_size, file_path, max_error_perc, max_lin
         if not line_data.success:
             error_lines_cnt += 1
         total_line_cnt += 1
-        if (max_line_to_parse > 0) and (total_line_cnt >= max_line_to_parse):
+        if max_line_to_parse and (total_line_cnt >= max_line_to_parse):
             break
 
-        if line_data.url == '':
+        if not line_data.url:
             continue
 
         add_line_data_to_dict(line_data, raw_result_dict)
@@ -76,7 +76,7 @@ def calc_report_data(log_format, report_size, file_path, max_error_perc, max_lin
         logging.error('Could not parse {}% of lines'.format(error_lines_perc))
         return []
 
-    return prepare_data(raw_result_dict, report_size)
+    return raw_result_dict
 
 
 def add_line_data_to_dict(line_data, result_dict):
@@ -88,7 +88,7 @@ def add_line_data_to_dict(line_data, result_dict):
             item[TIME_MAX] = line_data.time
         item[TIME_LIST].append(line_data.time)
     else:
-        result_dict[line_data.url] = {COUNT: 1, TIME_SUM: line_data.time, TIME_MAX: line_data.time,
+        result_dict[line_data.url] = {URL: line_data.url, COUNT: 1, TIME_SUM: line_data.time, TIME_MAX: line_data.time,
                                       TIME_LIST: [line_data.time]}
 
 
@@ -117,23 +117,22 @@ def parse_line(pattern, line):
 
 
 def prepare_data(result_dict, report_size):
-    result_list = list(map(lambda dict_item: dict_item[1].update({'url': dict_item[0]}) or dict_item[1],
-                           result_dict.items()))
+    result_list = [value for value in result_dict.values()]
+
+    total_count = sum([list_item[COUNT] for list_item in result_list])
+    total_time = sum([list_item[TIME_SUM] for list_item in result_list])
 
     result_list.sort(key=lambda list_item: list_item[TIME_SUM], reverse=True)
     result_list = result_list[:report_size]
 
-    total_count = sum(map(lambda list_item: list_item[COUNT], result_list))
-    total_time = sum(map(lambda list_item: list_item[TIME_SUM], result_list))
-
     for item in result_list:
-        item[TIME_AVG] = round(item[TIME_MAX] / len(result_list), 3)
+        item[TIME_AVG] = round(item[TIME_SUM] / len(item[TIME_LIST]), 3)
         item[TIME_MEDIAN] = round(median(item[TIME_LIST]), 3)
-        item[TIME_PERC] = round(item[TIME_SUM] / total_time, 3)
+        item[TIME_PERC] = round(item[TIME_SUM] / total_time * 100, 3)
         item[COUNT_PERC] = round(item[COUNT] / total_count * 100, 3)
         item[TIME_SUM] = round(item[TIME_SUM], 3)
+        del(item[TIME_LIST])
 
-    result_list = list(map(remove_time_list_from_dict, result_list))
     return result_list
 
 

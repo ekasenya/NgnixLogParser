@@ -11,7 +11,7 @@ from collections import namedtuple
 from datetime import datetime
 from string import Template
 
-from log_parser import calc_report_data
+from log_parser import calc_report_data, prepare_data
 
 # log_format ui_short '$remote_addr $remote_user $http_x_real_ip [$time_local] "$request" '
 #                     '$status $body_bytes_sent "$http_referer" '
@@ -106,11 +106,12 @@ def main(config):
         logging.info("Report {} already exists".format(result_file_name))
         sys.exit()
 
-    result_list = calc_report_data(LOG_FORMAT, int(config["report_size"]),
-                                   os.path.join(config["log_dir"], file_info.file_path),
-                                   int(config["max_error_perc"]))
-    if result_list:
-        save_result(result_list, os.path.join(config["report_dir"], result_file_name))
+    raw_result_dict = calc_report_data(LOG_FORMAT, os.path.join(config["log_dir"], file_info.file_path),
+                                       int(config["max_error_perc"]))
+    if raw_result_dict:
+        result_list = prepare_data(raw_result_dict, int(config["report_size"]))
+        if result_list:
+            save_result(result_list, os.path.join(config["report_dir"], result_file_name))
 
 
 if __name__ == "__main__":
